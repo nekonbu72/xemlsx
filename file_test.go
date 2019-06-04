@@ -44,7 +44,7 @@ func createMyTest() *MyTest {
 	return mt
 }
 
-func TestOpenAttachment(t *testing.T) {
+func TestToXLSX(t *testing.T) {
 
 	mt := createMyTest()
 
@@ -58,31 +58,34 @@ func TestOpenAttachment(t *testing.T) {
 	)
 	defer c.Logout()
 	if err != nil {
-		t.Errorf("CreateClient: %v\n", err)
+		t.Errorf("Login: %v\n", err)
 		return
 	}
 
 	done := make(chan interface{})
 	defer close(done)
+
 	attachmentStream := c.FetchAttachment(done, mt.Name, mt.Criteria)
-
-	for a := range attachmentStream {
-		x, err := xemlsx.OpenAttachment(a)
-		if err != nil {
-			t.Errorf("OpenAttachment: %v\n", err)
-			return
-		}
-
-		s, ok := x.Sheet[mt.Sheet]
-		if !ok {
-			t.Errorf("Sheet: %v\n", ok)
-			return
-		}
-
-		v := s.Cell(mt.Row, mt.Column).String()
-		if v != mt.Value {
-			t.Errorf("Cell: %v\n", v)
-			return
-		}
+	var xs []*xemlsx.XLSX
+	for x := range xemlsx.ToXLSX(done, attachmentStream) {
+		xs = append(xs, x)
 	}
+
+	if len(xs) != 1 {
+		t.Errorf("len: %v\n", len(xs))
+		return
+	}
+
+	s, ok := xs[0].Sheet[mt.Sheet]
+	if !ok {
+		t.Errorf("Sheet[%v]: %v\n", mt.Sheet, ok)
+		return
+	}
+
+	v := s.Cell(mt.Row, mt.Column).String()
+	if v != mt.Value {
+		t.Errorf("Cell(%v, %v): %v\n", mt.Row, mt.Column, v)
+		return
+	}
+
 }

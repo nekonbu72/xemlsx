@@ -3,6 +3,7 @@ package xemlsx
 import (
 	"bytes"
 	"io"
+	"log"
 
 	"github.com/nekonbu72/mailg"
 	"github.com/tealeg/xlsx"
@@ -12,6 +13,10 @@ type XLSX struct {
 	*mailg.Attachment
 	*xlsx.File
 }
+
+const (
+	limit int = 3
+)
 
 func openAttachment(a *mailg.Attachment) (*XLSX, error) {
 	r, size, err := readerAt(a)
@@ -36,26 +41,66 @@ func readerAt(r io.Reader) (io.ReaderAt, int64, error) {
 	return bytes.NewReader(buf.Bytes()), size, nil
 }
 
-func AttachmentToXLSX(
+type result struct {
+	Error error
+	XLSX  *XLSX
+}
+
+func toXLSX(
 	done <-chan interface{},
 	attachmentStream <-chan *mailg.Attachment,
+) <-chan result {
+	results := make(chan result)
+	go func() {
+		defer close(results)
+
+		for a := range attachmentStream {
+			x, err := openAttachment(a)
+			r := result{Error: err, XLSX: x}
+			select {
+			case <-done:
+				return
+			case results <- r:
+			}
+		}
+	}()
+	return results
+}
+
+func resultFilter(
+	done <-chan interface{},
+	results <-chan result,
+	limit int,
 ) <-chan *XLSX {
 	xlsxStream := make(chan *XLSX)
 	go func() {
 		defer close(xlsxStream)
-		var (
-			x   *XLSX
-			err error
-		)
-		for a := range attachmentStream {
+
+		errCount := 0
+		for r := range results {
+			if r.Error != nil {
+				log.Printf("error: %v", r.Error)
+				errCount++
+				if errCount >= limit {
+					log.Println("Too many errors, breaking!")
+					break
+				}
+				continue
+			}
 			select {
 			case <-done:
 				return
-			case xlsxStream <- x:
-
-			default:
-				x, err = openAttachment(a)
+			case xlsxStream <- r.XLSX:
 			}
 		}
 	}()
+	return xlsxStream
+}
+
+func ToXLSX(
+	done <-chan interface{},
+	attachmentStream <-chan *mailg.Attachment,
+) <-chan *XLSX {
+	ch := toXLSX(done, attachmentStream)
+	return resultFilter(done, ch, limit)
 }
