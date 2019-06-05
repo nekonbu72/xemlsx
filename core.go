@@ -15,7 +15,7 @@ type XLSX struct {
 }
 
 const (
-	limit int = 3
+	errLimit int = 3
 )
 
 func openAttachment(a *mailg.Attachment) (*XLSX, error) {
@@ -70,7 +70,7 @@ func toXLSX(
 func resultFilter(
 	done <-chan interface{},
 	results <-chan result,
-	limit int,
+	errLimit int,
 ) <-chan *XLSX {
 	xlsxStream := make(chan *XLSX)
 	go func() {
@@ -81,7 +81,7 @@ func resultFilter(
 			if r.Error != nil {
 				log.Printf("error: %v", r.Error)
 				errCount++
-				if errCount >= limit {
+				if errCount >= errLimit {
 					log.Println("Too many errors, breaking!")
 					break
 				}
@@ -102,5 +102,5 @@ func ToXLSX(
 	attachmentStream <-chan *mailg.Attachment,
 ) <-chan *XLSX {
 	ch := toXLSX(done, attachmentStream)
-	return resultFilter(done, ch, limit)
+	return resultFilter(done, ch, errLimit)
 }
