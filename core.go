@@ -10,7 +10,7 @@ import (
 )
 
 type XLSX struct {
-	*mailg.Attachment
+	FileName string
 	*xlsx.File
 }
 
@@ -18,7 +18,7 @@ const (
 	errLimit int = 3
 )
 
-func openAttachment(a *mailg.Attachment) (*XLSX, error) {
+func toXLSX(a *mailg.Attachment) (*XLSX, error) {
 	r, size, err := readerAt(a)
 	if err != nil {
 		return nil, err
@@ -29,7 +29,7 @@ func openAttachment(a *mailg.Attachment) (*XLSX, error) {
 		return nil, err
 	}
 
-	return &XLSX{Attachment: a, File: f}, nil
+	return &XLSX{FileName: a.FileName, File: f}, nil
 }
 
 func readerAt(r io.Reader) (io.ReaderAt, int64, error) {
@@ -41,66 +41,33 @@ func readerAt(r io.Reader) (io.ReaderAt, int64, error) {
 	return bytes.NewReader(buf.Bytes()), size, nil
 }
 
-type result struct {
-	Error error
-	XLSX  *XLSX
-}
-
-func toXLSX(
+func ToXLSX(
 	done <-chan interface{},
 	attachmentStream <-chan *mailg.Attachment,
-) <-chan result {
-	results := make(chan result)
-	go func() {
-		defer close(results)
-
-		for a := range attachmentStream {
-			x, err := openAttachment(a)
-			r := result{Error: err, XLSX: x}
-			select {
-			case <-done:
-				return
-			case results <- r:
-			}
-		}
-	}()
-	return results
-}
-
-func resultFilter(
-	done <-chan interface{},
-	results <-chan result,
-	errLimit int,
 ) <-chan *XLSX {
 	xlsxStream := make(chan *XLSX)
 	go func() {
 		defer close(xlsxStream)
 
 		errCount := 0
-		for r := range results {
-			if r.Error != nil {
-				log.Printf("error: %v", r.Error)
+		for a := range attachmentStream {
+			x, err := toXLSX(a)
+			if err != nil {
+				log.Printf("toXLSX: %v\n", err)
 				errCount++
 				if errCount >= errLimit {
-					log.Println("Too many errors, breaking!")
+					log.Println("To many errors, breaking!")
 					break
 				}
 				continue
 			}
+
 			select {
 			case <-done:
 				return
-			case xlsxStream <- r.XLSX:
+			case xlsxStream <- x:
 			}
 		}
 	}()
 	return xlsxStream
-}
-
-func ToXLSX(
-	done <-chan interface{},
-	attachmentStream <-chan *mailg.Attachment,
-) <-chan *XLSX {
-	ch := toXLSX(done, attachmentStream)
-	return resultFilter(done, ch, errLimit)
 }
