@@ -9,14 +9,14 @@ import (
 	"github.com/tealeg/xlsx"
 )
 
+const (
+	errLimit = 3
+)
+
 type XLSX struct {
 	FileName string
 	*xlsx.File
 }
-
-const (
-	errLimit int = 3
-)
 
 func toXLSX(a *mailg.Attachment) (*XLSX, error) {
 	r, size, err := readerAt(a)
