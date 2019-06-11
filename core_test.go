@@ -22,14 +22,6 @@ const (
 	expect  = "expect.json"
 )
 
-func testSetting() *mailg.Setting {
-	s := new(mailg.Setting)
-	if err := sjson.OpenDecode(path.Join(testDir, test), s); err != nil {
-		panic(err)
-	}
-	return s
-}
-
 func textExpect() *TestExpect {
 	e := new(TestExpect)
 	if err := sjson.OpenDecode(path.Join(testDir, expect), e); err != nil {
@@ -46,8 +38,11 @@ func testClient(ci *mailg.ConnInfo) *mailg.Client {
 	return c
 }
 func TestToXLSX(t *testing.T) {
+	st, err := mailg.NewSetting(path.Join(testDir, test))
+	if err != nil {
+		t.Errorf("NewSetting: %v\n", err)
+	}
 
-	st := testSetting()
 	c := testClient(st.ConnInfo)
 	defer c.Logout()
 	e := textExpect()
